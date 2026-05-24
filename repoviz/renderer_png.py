@@ -255,7 +255,7 @@ class PNGRenderer:
                 ax.text(right_x + col_w - 10, cy,
                         f"{format_number(c['commits'])} commits",
                         fontsize=t['small_font_size'],
-                        color=text_tertiary, va='top', ha='end',
+                        color=text_tertiary, va='top', ha='right',
                         fontfamily='sans-serif')
 
         # ---- 底部水印 ----

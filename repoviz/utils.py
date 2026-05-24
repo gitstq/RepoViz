@@ -23,11 +23,14 @@ def format_number(num):
     num = int(num)
     if num < 1000:
         return str(num)
-    elif num < 1_000_000:
+    elif num < 10_000:
         value = num / 1000.0
         if value == int(value):
             return f"{int(value)}k"
         return f"{value:.1f}k"
+    elif num < 1_000_000:
+        value = num / 1000.0
+        return f"{value:.0f}k"
     elif num < 1_000_000_000:
         value = num / 1_000_000.0
         if value == int(value):

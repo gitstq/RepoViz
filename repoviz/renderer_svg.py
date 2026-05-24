@@ -5,6 +5,7 @@ SVG海报渲染器
 """
 
 import math
+from datetime import timedelta
 from .templates import get_template, get_size, get_heatmap_level
 from .utils import format_number
 
@@ -125,15 +126,15 @@ class SVGRenderer:
         self._draw_text(x, y, "语言分布", size=t['subtitle_font_size'],
                         color=t['text_primary'], weight='bold')
 
-        bar_y = y + 20
-        bar_height = t['bar_height']
-        max_bar_width = width - 80  # 留出百分比文字空间
+        bar_y = y + 18
+        bar_height = 6
+        max_bar_width = width - 80
         max_lines = languages[0]['lines'] if languages else 1
 
         # 显示前5种语言
         display_langs = languages[:5]
         for i, lang in enumerate(display_langs):
-            current_y = bar_y + i * (bar_height + 12)
+            current_y = bar_y + i * (bar_height + 10)
 
             # 语言名
             self._draw_text(x, current_y + bar_height - 1, lang['name'],
@@ -163,33 +164,6 @@ class SVGRenderer:
                 color=t['text_tertiary'],
                 anchor='start'
             )
-
-        # 如果有更多语言，显示"其他"
-        if len(languages) > 5:
-            other_pct = sum(l['percentage'] for l in languages[5:])
-            if other_pct > 0.5:
-                current_y = bar_y + 5 * (bar_height + 12)
-                self._draw_text(x, current_y + bar_height - 1, "其他",
-                                size=t['small_font_size'], color=t['text_secondary'])
-                bar_x = x + 55
-                self._add(
-                    f'<rect x="{bar_x}" y="{current_y}" width="{max_bar_width}" '
-                    f'height="{bar_height}" rx="{t["bar_border_radius"]}" '
-                    f'fill="{t["card_bg"]}"/>'
-                )
-                bar_width = max(bar_height, (other_pct / 100.0) * max_bar_width)
-                self._add(
-                    f'<rect x="{bar_x}" y="{current_y}" width="{bar_width}" '
-                    f'height="{bar_height}" rx="{t["bar_border_radius"]}" '
-                    f'fill="#8b8b8b"/>'
-                )
-                self._draw_text(
-                    bar_x + max_bar_width + 8, current_y + bar_height - 1,
-                    f"{other_pct:.1f}%",
-                    size=t['small_font_size'],
-                    color=t['text_tertiary'],
-                    anchor='start'
-                )
 
     # ============================================================
     # 语言分布彩色条
@@ -223,11 +197,11 @@ class SVGRenderer:
         self._add('</g>')
 
     # ============================================================
-    # 提交热力图
+    # 提交热力图（紧凑版）
     # ============================================================
 
     def _draw_commit_heatmap(self, x, y, width, height, heatmap_data):
-        """绘制提交热力图（类似GitHub贡献图）"""
+        """绘制提交热力图（紧凑版，适合海报布局）"""
         t = self.template
         heatmap = heatmap_data['heatmap']
         max_count = heatmap_data['max_count']
@@ -237,25 +211,14 @@ class SVGRenderer:
         self._draw_text(x, y, "提交热力图", size=t['subtitle_font_size'],
                         color=t['text_primary'], weight='bold')
 
-        # 热力图参数
-        cell_size = max(8, min(11, (width - 30) // (weeks + 1)))
+        # 根据可用宽度计算可显示的周数
+        available_w = width - 40  # 留出左侧标签和右侧图例空间
+        cell_size = 9
         cell_gap = 2
         step = cell_size + cell_gap
+        display_weeks = min(weeks, available_w // step)
 
-        # 月份标签
-        month_labels = ['1月', '2月', '3月', '4月', '5月', '6月',
-                        '7月', '8月', '9月', '10月', '11月', '12月']
-        # 简化：显示几个关键月份
-        start_date = heatmap_data['start_date']
-        month_starts = {}
-        for week in range(weeks):
-            # 每周的开始日期
-            week_start = start_date + __import__('datetime').timedelta(days=week * 7)
-            month_key = week_start.month
-            if month_key not in month_starts:
-                month_starts[month_key] = week
-
-        heatmap_y = y + 18
+        heatmap_y = y + 16
 
         # 星期标签
         day_labels = ['', 'Mon', '', 'Wed', '', 'Fri', '']
@@ -269,12 +232,14 @@ class SVGRenderer:
                     opacity=0.7
                 )
 
-        heatmap_x = x + 28
+        heatmap_x = x + 26
 
-        # 绘制热力图格子
-        for week in range(weeks):
+        # 绘制热力图格子（只显示最近display_weeks周）
+        start_week = weeks - display_weeks
+        for week_offset in range(display_weeks):
+            week = start_week + week_offset
             for day in range(7):
-                cx = heatmap_x + week * step
+                cx = heatmap_x + week_offset * step
                 cy = heatmap_y + day * step
                 count = heatmap.get((week, day), 0)
                 level = get_heatmap_level(count, max_count)
@@ -284,18 +249,20 @@ class SVGRenderer:
                     f'height="{cell_size}" rx="2" fill="{color}"/>'
                 )
 
-        # 图例
-        legend_x = heatmap_x + weeks * step + 8
-        legend_y = heatmap_y + 5 * step
-        self._draw_text(legend_x - 2, legend_y + cell_size - 2, "少",
+        # 图例（放在热力图下方）
+        legend_y = heatmap_y + 7 * step + 4
+        self._draw_text(heatmap_x, legend_y + cell_size - 2, "少",
                         size=7, color=t['text_tertiary'])
         for i, color in enumerate(t['heatmap_colors']):
             self._add(
-                f'<rect x="{legend_x + 16 + i * (cell_size + 1)}" y="{legend_y}" '
+                f'<rect x="{heatmap_x + 14 + i * (cell_size + 1)}" y="{legend_y}" '
                 f'width="{cell_size}" height="{cell_size}" rx="2" fill="{color}"/>'
             )
-        self._draw_text(legend_x + 16 + 5 * (cell_size + 1) + 2, legend_y + cell_size - 2, "多",
+        self._draw_text(heatmap_x + 14 + 5 * (cell_size + 1) + 2, legend_y + cell_size - 2, "多",
                         size=7, color=t['text_tertiary'])
+
+        # 返回实际使用的高度
+        return 7 * step + 20
 
     # ============================================================
     # 贡献者排行
@@ -311,23 +278,23 @@ class SVGRenderer:
         self._draw_text(x, y, "贡献者排行", size=t['subtitle_font_size'],
                         color=t['text_primary'], weight='bold')
 
-        item_y = y + 20
+        item_y = y + 18
         max_commits = contributors[0]['commits'] if contributors else 1
 
         for i, contributor in enumerate(contributors):
-            current_y = item_y + i * 28
+            current_y = item_y + i * 24
 
             # 排名圆圈
             colors = [t['accent_color'], t['accent_secondary'], t['text_tertiary']]
             circle_color = colors[i] if i < 3 else t['text_tertiary']
             self._add(
-                f'<circle cx="{x + 8}" cy="{current_y + 8}" r="8" '
+                f'<circle cx="{x + 8}" cy="{current_y + 6}" r="7" '
                 f'fill="{circle_color}" opacity="0.2"/>'
             )
             self._draw_text(
-                x + 8, current_y + 12,
+                x + 8, current_y + 10,
                 str(i + 1),
-                size=9,
+                size=8,
                 color=circle_color,
                 anchor='middle',
                 weight='bold'
@@ -338,7 +305,7 @@ class SVGRenderer:
             if len(name) > 16:
                 name = name[:15] + '...'
             self._draw_text(
-                x + 24, current_y + 8,
+                x + 22, current_y + 6,
                 name,
                 size=t['body_font_size'],
                 color=t['text_primary'],
@@ -346,24 +313,24 @@ class SVGRenderer:
             )
 
             # 提交数进度条
-            bar_x = x + 24
-            bar_y = current_y + 14
+            bar_x = x + 22
+            bar_y = current_y + 12
             bar_max_w = width - 100
-            bar_h = 4
+            bar_h = 3
 
             self._add(
                 f'<rect x="{bar_x}" y="{bar_y}" width="{bar_max_w}" '
-                f'height="{bar_h}" rx="2" fill="{t["card_bg"]}"/>'
+                f'height="{bar_h}" rx="1.5" fill="{t["card_bg"]}"/>'
             )
             bar_w = (contributor['commits'] / max_commits) * bar_max_w if max_commits > 0 else 0
             self._add(
                 f'<rect x="{bar_x}" y="{bar_y}" width="{bar_w}" '
-                f'height="{bar_h}" rx="2" fill="{t["accent_color"]}" opacity="0.7"/>'
+                f'height="{bar_h}" rx="1.5" fill="{t["accent_color"]}" opacity="0.7"/>'
             )
 
             # 提交数
             self._draw_text(
-                x + width - 10, current_y + 12,
+                x + width - 10, current_y + 10,
                 f"{format_number(contributor['commits'])} commits",
                 size=t['small_font_size'],
                 color=t['text_tertiary'],
@@ -371,11 +338,11 @@ class SVGRenderer:
             )
 
     # ============================================================
-    # 活跃时段热力图
+    # 活跃时段分析
     # ============================================================
 
     def _draw_activity_patterns(self, x, y, width, height, activity_data):
-        """绘制活跃时段热力图"""
+        """绘制活跃时段分析"""
         t = self.template
         by_day = activity_data['by_day']
         by_hour = activity_data['by_hour']
@@ -386,51 +353,46 @@ class SVGRenderer:
         self._draw_text(x, y, "活跃时段", size=t['subtitle_font_size'],
                         color=t['text_primary'], weight='bold')
 
-        # 按星期几的柱状图
-        bar_y_start = y + 18
-        bar_area_w = width // 2 - 10
-        bar_h = 40
-        bar_w = max(4, (bar_area_w - 30) // 7 - 4)
+        chart_y = y + 16
+        bar_h = 30
+        half_w = width // 2 - 5
 
+        # ---- 左半部分：按星期几 ----
+        day_bar_w = max(4, (half_w - 10) // 7 - 3)
         for i, day_data in enumerate(by_day):
-            bx = x + 30 + i * (bar_w + 4)
+            bx = x + i * (day_bar_w + 3)
             ratio = day_data['count'] / max_day if max_day > 0 else 0
             bh = max(2, ratio * bar_h)
-            by = bar_y_start + bar_h - bh
+            by = chart_y + bar_h - bh
 
-            # 柱子
             self._add(
-                f'<rect x="{bx}" y="{by}" width="{bar_w}" height="{bh}" '
+                f'<rect x="{bx}" y="{by}" width="{day_bar_w}" height="{bh}" '
                 f'rx="2" fill="{t["accent_color"]}" opacity="{0.3 + ratio * 0.7}"/>'
             )
-            # 日期标签
             self._draw_text(
-                bx + bar_w / 2, bar_y_start + bar_h + 10,
+                bx + day_bar_w / 2, chart_y + bar_h + 10,
                 day_data['day_cn'][:1],
                 size=7,
                 color=t['text_tertiary'],
                 anchor='middle'
             )
 
-        # 按小时的柱状图（简化显示，只显示部分时段）
-        hour_x_start = x + width // 2 + 10
-        hour_area_w = width // 2 - 20
-        hour_bar_w = max(2, (hour_area_w - 20) // 12 - 2)
-
-        # 显示每2小时
+        # ---- 右半部分：按小时（每2小时一组） ----
+        hour_x = x + half_w + 10
+        hour_bar_w = max(2, (half_w - 10) // 12 - 2)
         for i in range(0, 24, 2):
             hour_data = by_hour[i]
-            bx = hour_x_start + 20 + (i // 2) * (hour_bar_w + 2)
+            bx = hour_x + (i // 2) * (hour_bar_w + 2)
             ratio = hour_data['count'] / max_hour if max_hour > 0 else 0
             bh = max(2, ratio * bar_h)
-            by = bar_y_start + bar_h - bh
+            by = chart_y + bar_h - bh
 
             self._add(
                 f'<rect x="{bx}" y="{by}" width="{hour_bar_w}" height="{bh}" '
                 f'rx="1" fill="{t["accent_secondary"]}" opacity="{0.3 + ratio * 0.7}"/>'
             )
             self._draw_text(
-                bx + hour_bar_w / 2, bar_y_start + bar_h + 10,
+                bx + hour_bar_w / 2, chart_y + bar_h + 10,
                 f"{i}h",
                 size=6,
                 color=t['text_tertiary'],
@@ -467,7 +429,7 @@ class SVGRenderer:
 
         # ---- 标题区域 ----
         repo_info = data['repo_info']
-        title_y = p + 20
+        title_y = p + 18
 
         # 仓库名称
         self._draw_text(p, title_y, repo_info['repo_name'],
@@ -488,17 +450,17 @@ class SVGRenderer:
             desc_parts.append(f"{format_number(repo_info['total_files'])} 个文件")
 
         if desc_parts:
-            self._draw_text(p, title_y + 18, '  |  '.join(desc_parts),
+            self._draw_text(p, title_y + 16, '  |  '.join(desc_parts),
                             size=t['body_font_size'], color=t['text_secondary'])
 
         # 语言彩色条
         if show_languages and data.get('languages'):
-            lang_bar_y = title_y + 32
-            self._draw_language_color_bar(p, lang_bar_y, self.width - 2 * p, 6,
+            lang_bar_y = title_y + 28
+            self._draw_language_color_bar(p, lang_bar_y, self.width - 2 * p, 5,
                                           data['languages'])
 
         # ---- 统计数字卡片 ----
-        stats_y = title_y + 52
+        stats_y = lang_bar_y + 14
         stats = data.get('repo_info', {})
         heatmap_info = data.get('heatmap', {})
 
@@ -509,45 +471,45 @@ class SVGRenderer:
             (format_number(heatmap_info.get('active_days', 0)), '活跃天数'),
         ]
 
-        card_width = (self.width - 2 * p - (len(stat_cards) - 1) * 10) // len(stat_cards)
-        card_height = 52
+        card_width = (self.width - 2 * p - (len(stat_cards) - 1) * 8) // len(stat_cards)
+        card_height = 46
 
         for i, (number, label) in enumerate(stat_cards):
-            cx = p + i * (card_width + 10)
+            cx = p + i * (card_width + 8)
             self._draw_stat_card(cx, stats_y, card_width, card_height, number, label)
 
         # ---- 内容区域（两栏布局） ----
-        content_y = stats_y + card_height + t['section_gap']
+        content_y = stats_y + card_height + 12
         left_col_x = p
-        right_col_x = p + (self.width - 2 * p) // 2 + 10
-        col_width = (self.width - 2 * p) // 2 - 10
+        right_col_x = p + (self.width - 2 * p) // 2 + 8
+        col_width = (self.width - 2 * p) // 2 - 8
 
         # 左栏：语言分布 + 活跃时段
         left_y = content_y
 
         if show_languages and data.get('languages'):
-            self._draw_language_bars(left_col_x, left_y, col_width, 160,
+            self._draw_language_bars(left_col_x, left_y, col_width, 100,
                                      data['languages'])
-            left_y += 160
+            left_y += 100
 
         if show_activity and data.get('activity'):
-            self._draw_activity_patterns(left_col_x, left_y, col_width, 80,
+            self._draw_activity_patterns(left_col_x, left_y, col_width, 60,
                                          data['activity'])
 
         # 右栏：提交热力图 + 贡献者排行
         right_y = content_y
 
         if show_heatmap and data.get('heatmap'):
-            self._draw_commit_heatmap(right_col_x, right_y, col_width, 140,
+            self._draw_commit_heatmap(right_col_x, right_y, col_width, 120,
                                       data['heatmap'])
-            right_y += 140
+            right_y += 120
 
         if show_contributors and data.get('contributors'):
-            self._draw_contributors(right_col_x, right_y, col_width, 160,
+            self._draw_contributors(right_col_x, right_y, col_width, 120,
                                     data['contributors'])
 
         # ---- 底部水印 ----
-        watermark_y = self.height - 16
+        watermark_y = self.height - 12
         self._draw_text(
             self.width - p, watermark_y,
             "Generated by RepoViz",
